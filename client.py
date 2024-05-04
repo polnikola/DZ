@@ -31,29 +31,36 @@ def plot_spectrogram(data, sample_rate):
 def client(host, port):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect((host, port))
-    call = input("Введите запрос ")
-    send_request(client_socket, call)
-    if call[0] == "LOAD":
-        response = client_socket.recv(1024).decode()
-        if response == "OK":
-            client_socket.sendall("OK".decode())
-            response = receive_data(client_socket)
-            if response.startswith(b"ERROR"):
-                print(response.decode())
-            else:
-                sample_rate, num_frames = struct.unpack("!II", response)
-                print(f"Sample Rate: {sample_rate}, Number of Frames: {num_frames}")
-
+    while True:
+        call = input("Введите запрос ")
+        send_request(client_socket, call)
+        call = call[:4]
+        if call == "QUIT":
+            break
+        if call == "LOAD":
+            send_request (client_socket,call)
+            response = client_socket.recv(1024).decode()
+            if response == "OK":
                 data = receive_data(client_socket)
-                if data:
+                print ("File loaded\n")
+                call = input("Введите команду ")
+                call = call[:4]
+                if call == "SPEC":
+                    client_socket.sendall(call.encode())
+                    response = client_socket.recv(4)
+                    sample_rate = struct.unpack("!I", response)[0]
                     plot_spectrogram(data, sample_rate)
-                else:
-                    print("Failed to receive data from server")
+                elif call == "INFO":
+                    client_socket.sendall(call.encode())
+                    response = receive_data(client_socket)
+                    sample_rate, num_frames = struct.unpack("!II", response)
+                    print(f"Sample Rate: {sample_rate}, Number of Frames: {num_frames}")
+                elif call == "UNLOAD":
+                    continue
+            else:
+                response = receive_data(client_socket)
         else:
-            print (response.decode())
-    else:
-        response = client_socket.recv(1024)
-        print(response.decode())
+            print (client_socket.recv(1024).decode())
     client_socket.close()
     print("connection closed")
 
