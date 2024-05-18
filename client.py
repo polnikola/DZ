@@ -53,6 +53,7 @@ def main():
             if command == "QUIT":
                 send_command(sock,command)
                 sock.close()
+                sample_rec = False
                 break
             if command == "SPEC":
                 if sample_rec:
