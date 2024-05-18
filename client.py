@@ -3,66 +3,71 @@ import struct
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Функция для получения данных от сервера
-def receive_data(connection):
-    length_data = connection.recv(4)
-    length = struct.unpack("!I", length_data)[0]
+def send_command(sock, command):
+    sock.sendall(command.encode())
+def server_response(sock):
+    response = sock.recv(1024).decode()
+    print (response)
+
+def get_samples(sock):
+    samples = b""
+    while True:
+        part = sock.recv(1024)
+        if not part:
+            break
+        samples += part
+        print(part)
+    return samples
+
+def receive_samples(connection):
+    length_and_rate = connection.recv(8)
+    length,samplerate = struct.unpack("!II", length_and_rate)
     data = b""
     while len(data) < length:
         packet = connection.recv(length - len(data))
         if not packet:
             return None
         data += packet
-    return data
+    return samplerate,data
 
-# Функция для отправки запроса на сервер
-def send_request(connection, request):
-    connection.sendall(request.encode())
-
-# Функция для построения спектрограммы
-def plot_spectrogram(data, sample_rate):
-    signal = np.frombuffer(data, dtype=np.int16)
-    plt.specgram(signal, Fs=sample_rate)
-    plt.xlabel('Time')
-    plt.ylabel('Frequency')
+def plot_spectrogram(samples, rate):
+    samples = np.frombuffer(samples, dtype=np.int16)
+    plt.specgram(samples, NFFT=1024, Fs=rate, noverlap=512)
+    plt.title("Spectrogram")
+    plt.ylabel("Frequency (Hz)")
+    plt.xlabel("Time (s)")
     plt.show()
 
-# Основная функция клиента
-def client(host, port):
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((host, port))
-    while True:
-        call = input("Введите запрос ")
-        send_request(client_socket, call)
-        call = call[:4]
-        if call == "QUIT":
-            break
-        if call == "LOAD":
-            send_request (client_socket,call)
-            response = client_socket.recv(1024).decode()
-            if response == "OK":
-                data = receive_data(client_socket)
-                print ("File loaded\n")
-                call = input("Введите команду ")
-                call = call[:4]
-                if call == "SPEC":
-                    client_socket.sendall(call.encode())
-                    response = client_socket.recv(4)
-                    sample_rate = struct.unpack("!I", response)[0]
-                    plot_spectrogram(data, sample_rate)
-                elif call == "INFO":
-                    client_socket.sendall(call.encode())
-                    response = receive_data(client_socket)
-                    sample_rate, num_frames = struct.unpack("!II", response)
-                    print(f"Sample Rate: {sample_rate}, Number of Frames: {num_frames}")
-                elif call == "UNLOAD":
-                    continue
-            else:
-                response = receive_data(client_socket)
-        else:
-            print (client_socket.recv(1024).decode())
-    client_socket.close()
-    print("connection closed")
+def main():
+    server_ip = "127.0.0.1"
+    server_port = 5000
+    sample_rec = False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((server_ip, server_port))
 
-# Запуск клиента
-client("localhost", 9999)
+        while True:
+            command = input("Enter command: ").strip()
+            if not command:
+                continue
+
+            if command == "QUIT":
+                send_command(sock,command)
+                sock.close()
+                break
+            if command == "SPEC":
+                if sample_rec:
+                    plot_spectrogram(samples, rate)
+                else:
+                    print("No samples")
+                continue
+            send_command(sock,command)
+            if command.startswith("SAMP"):
+                print("Receiving samples...")
+                rate,samples = receive_samples(sock)
+                print("Samples received")
+                sample_rec = True
+            else:
+                server_response(sock)
+
+if __name__ == "__main__":
+    main()

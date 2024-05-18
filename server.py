@@ -1,76 +1,86 @@
 import socket
-import wave
 import struct
+import wave
 import os
 
-# Функция для загрузки wav файла
-def load_wav_file(filename):
-    try:
-        wave_file = wave.open(filename, 'rb')
-        sample_rate = wave_file.getframerate()
-        num_frames = wave_file.getnframes()
-        return wave_file, sample_rate, num_frames
-    except FileNotFoundError:
-        return None, None, None
-
-# Функция для отправки данных клиенту
-def send_data(connection, data):
-    connection.sendall(struct.pack("!I", len(data)))
+def send_data(connection, data,framerate):
+    connection.sendall(struct.pack("!II", len(data),framerate))
     connection.sendall(data)
 
-# Функция для обработки запросов клиента
-def handle_client(client_socket):
-    while True:
-        try: command = client_socket.recv(1024).decode().split(" ")
-        except socket.error:
-            continue
-        if command[0] == "LOAD":
-            try: filename = command[1]
-            except IndexError:
-                client_socket.sendall("BAD".encode())
-                continue
-            wave_file, sample_rate, num_frames = load_wav_file(filename)
-            if wave_file:
-                client_socket.sendall("OK".encode())
-                data = wave_file.readframes(num_frames)
-                send_data(client_socket, data)
-                wave_file.close()
-                command = client_socket.recv(1024).decode()
-                if command == "INFO":
-                    send_data(client_socket, struct.pack("!II", sample_rate, num_frames))
-                elif command == "SPEC":
-                     send_data(client_socket, struct.pack("!I", sample_rate))
-                else:
-                     client_socket.sendall(b"ERROR")
-            else:
-                client_socket.sendall(b"ERROR: File not found")
-        elif command[0] == "*IDN?":
-            port = client_socket.getsockname()[1]
-            response = f"You're on server port {port}"
-            client_socket.sendall(response.encode())
-        elif command[0] == "INFO":
-            response = "No file loaded"
-            client_socket.sendall(response.encode())
-            continue
-        else:
-            client_socket.sendall(b"ERROR: Invalid command")
+def handle_client_connection(client_socket, client_address):
+    print(f"Accepted connection from {client_address}")
+    
 
-# Основная функция сервера
-def server(host, port):
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
-    server_socket.listen(5)
-    print(f"Server listening on {host}:{port}")
     while True:
-        try: client_socket, addr = server_socket.accept()
-        except socket.error:
-            pass
-        else:
-            print(f"Connected to {addr[0]}:{addr[1]}")
-            handle_client(client_socket)
+        try:
+            request = client_socket.recv(1024).decode().strip()
+            if not request:
+                break
+
+            command = request.split()
+            if command[0] == "LOAD":
+                if len(command) != 2:
+                    client_socket.sendall(b"ERROR: Invalid LOAD command format\n")
+                    continue
+                filename = command[1]
+                if not os.path.exists(filename):
+                    client_socket.sendall(b"ERROR: File not found\n")
+                    continue
+                try:
+                    global wav_file
+                    wav_file = wave.open(filename, 'rb')
+                    client_socket.sendall(b"OK: File loaded\n")
+                except wave.Error:
+                    client_socket.sendall(b"ERROR: Invalid WAV file\n")
+
+            elif command[0] == "INFO":
+                if 'wav_file' not in globals():
+                    client_socket.sendall(b"ERROR: No file loaded\n")
+                    continue
+                try:
+                    rate = wav_file.getframerate()
+                    frames = wav_file.getnframes()
+                    client_socket.sendall(f"INFO: Rate={rate} Frames={frames}\n".encode())
+                except wave.Error:
+                    client_socket.sendall(b"ERROR: Could not read file info\n")
+
+            elif command[0] == "SAMP":
+                if 'wav_file' not in globals():
+                    client_socket.sendall(b"ERROR: No file loaded\n")
+                    continue
+                try:
+                    wav_file.rewind()
+                    frames = wav_file.readframes(wav_file.getnframes())
+                    send_data(client_socket,frames,wav_file.getframerate())
+                except wave.Error:
+                    client_socket.sendall(b"ERROR: Could not read samples\n")
+
+            elif command[0] == "*IDN?":
+                client_socket.sendall(f"You are on server {client_address[0]}:{client_address[1]}\n".encode())
+            elif command[0] == "QUIT":
+                client_socket.close()
+                print("connection closed")
+                break
+            else:
+                client_socket.sendall(b"ERROR: Unknown command\n")
+        
+        except Exception as e:
+            #client_socket.sendall(f"ERROR: {str(e)}\n".encode())
             client_socket.close()
             print("connection closed")
+            break
 
-# Запуск серверa
+    client_socket.close()
 
-server("localhost", 9999)
+def start_server(host, port):
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind((host, port))
+    server.listen(5)
+    print(f"Listening on {host}:{port}")
+
+    while True:
+        client_sock, client_addr = server.accept()
+        handle_client_connection(client_sock, client_addr)
+
+if __name__ == "__main__":
+    start_server("127.0.0.1", 5000)
