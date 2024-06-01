@@ -2,7 +2,25 @@ import serial
 import struct
 import wave
 import os
+import numpy as np
+from scipy.signal import chirp
+from scipy.io.wavfile import write
 
+def Generate_wav(name, time,ratio):
+    if ratio > 1:
+        return False
+    interval_length1 = time * ratio
+    interval_length2 = time * (1-ratio)
+    sampleRate = 44100 
+    startFreq = 20000
+    stopFreq = 20
+    t1 = np.linspace(0, interval_length1, int(sampleRate * (interval_length1)))
+    t2 = np.linspace(0, interval_length2, int(sampleRate * (interval_length2)))
+    w1 = chirp(t1, f0=stopFreq, f1=startFreq, t1=interval_length1, method='linear')
+    w2 = chirp(t2, f0=startFreq, f1=stopFreq, t1=interval_length2, method='quadratic')
+    w = np.concatenate((w1, w2), axis=0)
+    write(name, sampleRate, (w*(2**15)).astype(np.int16))
+    return True
 
 class ComPort():
     Connected = False
@@ -84,7 +102,20 @@ def handle_client_connection(ser,port):
                     ser.Send(f"INFO: Rate={rate} Frames={frames}\n")
                 except wave.Error:
                     ser.Send(b"ERROR: Could not read file info\n")
-
+            elif command[0] == "GNRT":
+                if len(command) < 4:
+                    ser.Send(b"ERROR: Fill all arguments(name, time, fall_%, rise_%)\n")
+                    continue
+                else:
+                    name = command[1]
+                    time = float(command[2])
+                    ratio = float(command[3])
+                    if Generate_wav(name, time,ratio) == True:
+                        ser.Send(b"Success\n")
+                        continue
+                    else: 
+                        ser.Send(b"Something went wrong\n")
+                        continue
             elif command[0] == "SAMP":
                 if 'wav_file' not in globals():
                     ser.Send(b"ERROR: No file loaded\n")
