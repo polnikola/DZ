@@ -95,6 +95,8 @@ def handle_client_connection(ser,port):
                     ser.Send(rate.to_bytes(16, byteorder='big'))
                     frames = wav_file.readframes(wav_file.getnframes())
                     ser.Send(frames)
+                    framecount = wav_file.getnframes()
+                    ser.Send(framecount.to_bytes(16, byteorder='big'))
                 except wave.Error as e:
                     ser.Send(b"ERROR: Could not read samples\n")
 

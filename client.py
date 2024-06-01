@@ -16,7 +16,8 @@ def server_response(client):
 def receive_samples(client):
     samplerate = client.ReceiveBytes()
     data = client.ReceiveBytes()
-    return samplerate, data
+    framecount = client.ReceiveBytes()
+    return samplerate, data,framecount
 
 def plot_spectrogram(samples, rate):
     # samples = np.frombuffer(samples, dtype=np.uint16)
@@ -26,6 +27,20 @@ def plot_spectrogram(samples, rate):
     plt.title("Spectrogram")
     plt.ylabel("Frequency (Hz)")
     plt.xlabel("Time (s)")
+    plt.show()
+
+def plot_oscil(samples,rate,framecount):
+    # Получение временного массива
+    samples = [struct.unpack('h', samples[i:i+2])[0] for i in range(0, len(samples), 2)]
+    framecount = int.from_bytes(framecount, byteorder='big')
+    rate = int.from_bytes(rate, byteorder='big')
+    duration = framecount / rate
+    time = np.linspace(0., duration, framecount)
+    xf = np.linspace(0.0, (1/rate * len(samples)), len(samples),endpoint=True,retstep=False, dtype=None,axis = 0)
+    plt.title('Осциллограмма WAV файла')
+    plt.xlabel('Время (с)')
+    plt.ylabel('Амплитуда')
+    plt.plot(xf,samples, color = 'green')
     plt.show()
 
 def main():
@@ -55,9 +70,16 @@ def main():
         send_command(client, command)
         if command.startswith("SAMP"):
             print("Receiving samples...")
-            rate, samples = receive_samples(client)
+            rate, samples,framecount = receive_samples(client)
             print("Samples received")
             sample_rec = True
+            continue
+        if command == "OSCI":
+            if sample_rec:
+                plot_oscil(samples, rate,framecount)
+            else:
+                print("No samples")
+            continue
         else:
             print(server_response(client))
 
