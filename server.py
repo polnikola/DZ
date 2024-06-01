@@ -97,6 +97,8 @@ def handle_client_connection(ser,port):
                     ser.Send(frames)
                     framecount = wav_file.getnframes()
                     ser.Send(framecount.to_bytes(16, byteorder='big'))
+                    channels = wav_file.getnchannels()
+                    ser.Send(channels.to_bytes(16, byteorder='big'))
                 except wave.Error as e:
                     ser.Send(b"ERROR: Could not read samples\n")
 
@@ -122,4 +124,4 @@ def start_server(port):
     handle_client_connection(ser,port)
 
 if __name__ == "__main__":
-    start_server("COM5")  # Укажите ваш COM порт
+    start_server("COM3")  # Укажите ваш COM порт
