@@ -2,6 +2,7 @@ import socket
 import struct
 import matplotlib.pyplot as plt
 import numpy as np
+import threading
 
 def send_command(sock, command):
     sock.sendall(command.encode())

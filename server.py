@@ -2,6 +2,7 @@ import socket
 import struct
 import wave
 import os
+import threading
 
 def send_data(connection, data,framerate):
     connection.sendall(struct.pack("!II", len(data),framerate))
@@ -80,7 +81,8 @@ def start_server(host, port):
 
     while True:
         client_sock, client_addr = server.accept()
-        handle_client_connection(client_sock, client_addr)
-
+        client_thread = threading.Thread(target=handle_client_connection, args=(client_sock, client_addr))
+        client_thread.start()
+        
 if __name__ == "__main__":
     start_server("127.0.0.1", 5000)
