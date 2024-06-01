@@ -1,75 +1,65 @@
-import socket
+import serial
 import struct
 import matplotlib.pyplot as plt
 import numpy as np
-import threading
+import time
+from server import ComPort
 
-def send_command(sock, command):
-    sock.sendall(command.encode())
-def server_response(sock):
-    response = sock.recv(1024).decode()
-    print (response)
+def send_command(client, command):
+    client.Send(command + '\n')
 
-def get_samples(sock):
-    samples = b""
-    while True:
-        part = sock.recv(1024)
-        if not part:
-            break
-        samples += part
-        print(part)
-    return samples
+def server_response(client):
+    response = client.ReceiveStr()
+    return response
 
-def receive_samples(connection):
-    length_and_rate = connection.recv(8)
-    length,samplerate = struct.unpack("!II", length_and_rate)
-    data = b""
-    while len(data) < length:
-        packet = connection.recv(length - len(data))
-        if not packet:
-            return None
-        data += packet
-    return samplerate,data
+
+def receive_samples(client):
+    samplerate = client.ReceiveBytes()
+    data = client.ReceiveBytes()
+    return samplerate, data
 
 def plot_spectrogram(samples, rate):
-    samples = np.frombuffer(samples, dtype=np.int16)
-    plt.specgram(samples, NFFT=1024, Fs=rate, noverlap=512)
+    # samples = np.frombuffer(samples, dtype=np.uint16)
+    samples = [struct.unpack('h', samples[i:i+2])[0] for i in range(0, len(samples), 2)]
+    samplerate = int.from_bytes(rate, byteorder='big')
+    plt.specgram(samples, NFFT=1024, Fs=samplerate, noverlap=512)
     plt.title("Spectrogram")
     plt.ylabel("Frequency (Hz)")
     plt.xlabel("Time (s)")
     plt.show()
 
 def main():
-    server_ip = "127.0.0.1"
-    server_port = 5000
+    port = "COM4"  # Укажите ваш COM-порт
+    baudrate = 115200
     sample_rec = False
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((server_ip, server_port))
 
-        while True:
-            command = input("Enter command: ").strip()
-            if not command:
-                continue
+    client = ComPort()
+    client.Connect(port,baudrate)
+    time.sleep(1)  # Дать время для инициализации порта
 
-            if command == "QUIT":
-                send_command(sock,command)
-                sock.close()
-                sample_rec = False
-                break
-            if command == "SPEC":
-                if sample_rec:
-                    plot_spectrogram(samples, rate)
-                else:
-                    print("No samples")
-                continue
-            send_command(sock,command)
-            if command.startswith("SAMP"):
-                print("Receiving samples...")
-                rate,samples = receive_samples(sock)
-                print("Samples received")
-                sample_rec = True
+    while True:
+        command = input("Enter command: ").strip()
+        if not command:
+            continue
+        if command == "QUIT":
+            send_command(client, command)
+            client.Disconnect()
+            break
+        if command == "SPEC":
+            if sample_rec:
+                plot_spectrogram(samples, rate)
             else:
-                server_response(sock)
+                print("No samples")
+            continue
+
+        send_command(client, command)
+        if command.startswith("SAMP"):
+            print("Receiving samples...")
+            rate, samples = receive_samples(client)
+            print("Samples received")
+            sample_rec = True
+        else:
+            print(server_response(client))
 
 if __name__ == "__main__":
     main()

@@ -1,88 +1,123 @@
-import socket
+import serial
 import struct
 import wave
 import os
-import threading
 
-def send_data(connection, data,framerate):
-    connection.sendall(struct.pack("!II", len(data),framerate))
-    connection.sendall(data)
 
-def handle_client_connection(client_socket, client_address):
-    print(f"Accepted connection from {client_address}")
-    
+class ComPort():
+    Connected = False
+    def Connect(self, portName, baudRate, byteSize = 8, stopBits = 1):
+        if(not self.Connected):
+            print("Попытка установить соединение", portName)
+            try:
+                self.port = serial.Serial(port=portName, baudrate=baudRate, bytesize=byteSize, stopbits=stopBits)
+                self.Connected = True
+            except serial.SerialException:
+                print("Проверьте првильность установки параметров")
+            except:
+                print("Вознкла другая ошибка")
+            finally:
+                print(("Соединение установлено" if self.Connected else "Соединение не установлено"))
+
+    def Disconnect(self):
+        self.port.close()
+
+    def Send(self, data):
+        if(self.Connected):
+            if(type(data) is str):
+                print("Отправка сообщения", data)
+                self.port.write(data.encode('utf-8')+ b"Nikita")
+                print("Успешно отправлено")
+            else:
+                print("Отправка сообщения")
+                self.port.write(data+ b"Nikita")
+                print("Успешно отправлено")
+        else:
+            print("Device is not connected")
+        
+    def ReceiveBytes(self):
+        if(self.Connected):
+            print("Ожидание ответа...")
+            resp = self.port.read_until(expected=b"Nikita")
+            resp = resp[:-6]
+            print("Ответ получен")
+            return resp
+        else:
+            print("Device is not connected")
+            return b""
+
+    def ReceiveStr(self):
+        resp = self.ReceiveBytes()
+        return resp.decode('utf-8')
+
+def handle_client_connection(ser,port):
+    print("Accepted connection on COM port")
 
     while True:
         try:
-            request = client_socket.recv(1024).decode().strip()
+            request = ser.ReceiveStr()
             if not request:
                 break
-
             command = request.split()
             if command[0] == "LOAD":
                 if len(command) != 2:
-                    client_socket.sendall(b"ERROR: Invalid LOAD command format\n")
+                    ser.Send(b"ERROR: Invalid LOAD command format\n")
                     continue
                 filename = command[1]
                 if not os.path.exists(filename):
-                    client_socket.sendall(b"ERROR: File not found\n")
+                    ser.Send(b"ERROR: File not found\n")
                     continue
                 try:
                     global wav_file
                     wav_file = wave.open(filename, 'rb')
-                    client_socket.sendall(b"OK: File loaded\n")
+                    ser.Send(b"OK: File loaded\n")
                 except wave.Error:
-                    client_socket.sendall(b"ERROR: Invalid WAV file\n")
+                    ser.Send(b"ERROR: Invalid WAV file\n")
 
             elif command[0] == "INFO":
                 if 'wav_file' not in globals():
-                    client_socket.sendall(b"ERROR: No file loaded\n")
+                    ser.Send(b"ERROR: No file loaded\n")
                     continue
                 try:
                     rate = wav_file.getframerate()
                     frames = wav_file.getnframes()
-                    client_socket.sendall(f"INFO: Rate={rate} Frames={frames}\n".encode())
+                    ser.Send(f"INFO: Rate={rate} Frames={frames}\n")
                 except wave.Error:
-                    client_socket.sendall(b"ERROR: Could not read file info\n")
+                    ser.Send(b"ERROR: Could not read file info\n")
 
             elif command[0] == "SAMP":
                 if 'wav_file' not in globals():
-                    client_socket.sendall(b"ERROR: No file loaded\n")
+                    ser.Send(b"ERROR: No file loaded\n")
                     continue
                 try:
                     wav_file.rewind()
+                    rate = wav_file.getframerate()
+                    ser.Send(rate.to_bytes(16, byteorder='big'))
                     frames = wav_file.readframes(wav_file.getnframes())
-                    send_data(client_socket,frames,wav_file.getframerate())
-                except wave.Error:
-                    client_socket.sendall(b"ERROR: Could not read samples\n")
+                    ser.Send(frames)
+                except wave.Error as e:
+                    ser.Send(b"ERROR: Could not read samples\n")
 
             elif command[0] == "*IDN?":
-                client_socket.sendall(f"You are on server {client_address[0]}:{client_address[1]}\n".encode())
+                ser.Send(f"You are on the server {port}\n")
             elif command[0] == "QUIT":
-                client_socket.close()
-                print("connection closed")
+                ser.close()
+                print("Connection closed")
                 break
             else:
-                client_socket.sendall(b"ERROR: Unknown command\n")
-        
+                ser.Send(b"ERROR: Unknown command\n")
+
         except Exception as e:
-            #client_socket.sendall(f"ERROR: {str(e)}\n".encode())
-            client_socket.close()
-            print("connection closed")
+            ser.Disconnect()
+            print("Connection closed")
             break
 
-    client_socket.close()
+def start_server(port):
+    ser = ComPort()
+    ser.Connect(port,115200)
+    print(f"Listening on {port}")
 
-def start_server(host, port):
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind((host, port))
-    server.listen(5)
-    print(f"Listening on {host}:{port}")
+    handle_client_connection(ser,port)
 
-    while True:
-        client_sock, client_addr = server.accept()
-        client_thread = threading.Thread(target=handle_client_connection, args=(client_sock, client_addr))
-        client_thread.start()
-        
 if __name__ == "__main__":
-    start_server("127.0.0.1", 5000)
+    start_server("COM5")  # Укажите ваш COM порт
