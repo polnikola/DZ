@@ -16,8 +16,8 @@ def Generate_wav(name, time,ratio):
     stopFreq = 20
     t1 = np.linspace(0, interval_length1, int(sampleRate * (interval_length1)))
     t2 = np.linspace(0, interval_length2, int(sampleRate * (interval_length2)))
-    w1 = chirp(t1, f0=stopFreq, f1=startFreq, t1=interval_length1, method='linear')
-    w2 = chirp(t2, f0=startFreq, f1=stopFreq, t1=interval_length2, method='quadratic')
+    w1 = chirp(t1, f0=startFreq, f1=stopFreq, t1=interval_length1, method='linear')
+    w2 = chirp(t2, f0=stopFreq, f1=startFreq, t1=interval_length2, method='quadratic')
     w = np.concatenate((w1, w2), axis=0)
     write(name, sampleRate, (w*(2**15)).astype(np.int16))
     return True
