@@ -6,6 +6,17 @@ import numpy as np
 from scipy.signal import chirp
 from scipy.io.wavfile import write
 
+dict = {
+    "HELP" : "Выводит все команды",
+    "LOAD" : "Выбирает wav файл на сервере",
+    "INFO" : "Выводит фреймрейт и количество отсчетов",
+    "SAMP" : "Передает сэмплы на клиент",
+    "QUIT" : "Разрывает соединение",
+    "*IDN?" : "Эхо сервера",
+    "SPEC" : "Выводит спектрограмму файла",
+    "OSCI" : "Выводит осциллограмму"
+ }
+
 def Generate_wav(name, time,ratio):
     if ratio > 1:
         return False
@@ -92,6 +103,16 @@ def handle_client_connection(ser,port):
                 except wave.Error:
                     ser.Send(b"ERROR: Invalid WAV file\n")
 
+            elif command[0] == "HELP":
+                if len(command) == 2:
+                    ser.Send(dict.get(command[1],"нет такой комманды") + '\n')
+                else:
+                    response = ""
+                    keys = dict.keys()
+                    for a in keys:
+                        response += a + "\n"
+                    ser.Send(response)
+                continue
             elif command[0] == "INFO":
                 if 'wav_file' not in globals():
                     ser.Send(b"ERROR: No file loaded\n")
